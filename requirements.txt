@@ -1,0 +1,8 @@
+crewai
+crewai-tools
+streamlit
+fastapi
+uvicorn
+pydantic
+python-dotenv
+youtube-transcript-api 
