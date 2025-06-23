@@ -100,24 +100,25 @@ st.markdown("""
     
     /* Input styling */
     .stTextInput > div > div > input {
-        border-radius: 12px;
-        border: 2px solid #e8ecef;
-        padding: 1rem;
-        font-size: 1.1rem;
-        transition: all 0.3s ease;
-        background: #fafbfc;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: #ff6b6b;
-        box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
-        background: white;
-        color: #333;
-    }
+    border-radius: 12px;
+    border: 2px solid #e8ecef;
+    padding: 1rem;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
+    background: #ffffff;
+    color: #333333;
+}
 
-    .stTextInput > div > div > input:focus::placeholder {
-        color: #999;
-    }
+.stTextInput > div > div > input::placeholder {
+    color: #888888;
+    opacity: 1;
+}
+
+.stTextInput > div > div > input:focus {
+    outline: none;
+    border-color: #4285f4;
+    box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+}
     
     /* Email input special styling */
     .email-input {
@@ -342,6 +343,16 @@ st.markdown("""
         border-left: 4px solid #ffc107;
         margin: 1rem 0;
     }
+    
+    /* Success message styling */
+    .success-message {
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        border-left: 4px solid #28a745;
+        color: #155724;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -393,6 +404,10 @@ class BlogCrew:
         self.llm = LLM(model="gemini/gemini-2.0-flash")
 
     def run(self):
+        """
+        Run the blog creation process with proper task dependencies
+        to ensure blog content is always returned for display
+        """
         try:
             # Initialize agents and tasks
             agents = YT2WriteAgents()
@@ -402,40 +417,84 @@ class BlogCrew:
             transcript_agent = agents.transcript_agent()
             summary_agent = agents.summary_agent()
             blog_writer_agent = agents.blog_writer_agent()
-            email_agent = agents.email_agent()
 
             logger.info("Agents assigned")
 
-            # Create tasks
+            # Create core tasks with proper dependencies
             extract_task = tasks.extract_transcript_text(transcript_agent, self.video_id)
             outline_task = tasks.outline_task(summary_agent)
             blog_task = tasks.write_blog(blog_writer_agent)
 
-            # Create crew with or without email task
+            # Create crew with core tasks
             crew_agents = [transcript_agent, summary_agent, blog_writer_agent]
             crew_tasks = [extract_task, outline_task, blog_task]
-            
-            # Add email task if email address is provided
-            if self.email_address:
-                email_task = tasks.send_blog_email(email_agent, self.email_address, f"YouTube Video {self.video_id}")
-                crew_agents.append(email_agent)
-                crew_tasks.append(email_task)
 
-            logger.info("Tasks assigned")
+            logger.info("Core tasks assigned")
 
-            # Create and run crew
+            # Create and run crew for blog generation
             crew = Crew(
                 agents=crew_agents,
                 tasks=crew_tasks,
                 verbose=True
             )
 
-            logger.info("Crew executed")
+            logger.info("Executing blog generation crew")
+            blog_result = crew.kickoff()
+            
+            # Extract the blog content from the result
+            blog_content = blog_result.raw if hasattr(blog_result, 'raw') else str(blog_result)
+            
+            # If email is requested, send it separately but still return the blog content
+            if self.email_address:
+                try:
+                    logger.info("Sending email with blog content")
+                    email_agent = agents.email_agent()
+                    email_task = tasks.send_blog_email(
+                        email_agent, 
+                        self.email_address, 
+                        f"YouTube Video {self.video_id}"
+                    )
+                    
+                    crew_agents.append(email_agent)
+                    crew_tasks.append(email_task)
 
-            result = crew.kickoff()
-            return result
+                    # Create a separate crew just for email sending
+                    email_crew = Crew(
+                        agents=crew_agents,
+                        tasks=crew_tasks,
+                        verbose=True
+                    )
+                    
+                   
+                    # Execute email sending
+                    email_result = email_crew.kickoff()
+                    logger.info("Email sent successfully")
+                    
+                    # Return the blog content with email confirmation
+                    return {
+                        'blog_content': blog_content,
+                        'email_sent': True,
+                        'email_address': self.email_address
+                    }
+                    
+                except Exception as email_error:
+                    logger.error(f"Email sending failed: {email_error}")
+                    # Even if email fails, return the blog content
+                    return {
+                        'blog_content': blog_content,
+                        'email_sent': False,
+                        'email_error': str(email_error)
+                    }
+            
+            # Return just the blog content if no email requested
+            return {
+                'blog_content': blog_content,
+                'email_sent': False
+            }
+            
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
+            logger.error(f"Blog creation failed: {e}")
             return None
 
 
@@ -529,14 +588,6 @@ def main():
                     
                     st.markdown('</div>', unsafe_allow_html=True)
                     
-                    # Warning about email configuration
-                    if send_email:
-                        st.markdown("""
-                        <div class="warning-box">
-                            <strong>⚠️ Note:</strong> Email delivery requires proper SMTP configuration. 
-                            Make sure your environment variables are set up correctly.
-                        </div>
-                        """, unsafe_allow_html=True)
                 
                 # Show video preview if URL is valid
                 if video_input:
@@ -646,23 +697,32 @@ def main():
                     
                     success_message = "✅ Your blog post is ready!"
                     if send_email and final_email:
-                        success_message += f" Email sent to {final_email}"
+                        success_message += f" Email delivery attempted."
                     
                     status.update(label=success_message, state="complete", expanded=False)
                 st.markdown('</div>', unsafe_allow_html=True)
                 
-                # Results section
-                if result:
+                # Results section - Always show the blog content
+                if result and isinstance(result, dict) and 'blog_content' in result:
                     st.markdown('<div class="results-container">', unsafe_allow_html=True)
                     st.markdown("## 📝 Your Generated Blog Post")
                     
-                    if send_email and final_email:
-                        st.success(f"📧 Blog post has been sent to: **{final_email}**")
+                    # Email status messages
+                    if result.get('email_sent'):
+                        st.markdown(f"""
+                        <div class="success-message">
+                            <strong>📧 Success!</strong> Blog post has been sent to: <strong>{result.get('email_address')}</strong>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    elif 'email_error' in result:
+                        st.warning(f"📧 Email delivery failed: {result['email_error']}")
+                        st.info("Don't worry! Your blog post is still ready below. You can copy or download it.")
                     
                     st.markdown("---")
                     
-                    # Display the blog post
-                    st.markdown(result.raw if hasattr(result, 'raw') else str(result))
+                    # Display the blog post content
+                    blog_content = result['blog_content']
+                    st.markdown(blog_content)
                     
                     st.markdown('</div>', unsafe_allow_html=True)
                     

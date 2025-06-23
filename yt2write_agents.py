@@ -1,6 +1,7 @@
 import logging
 from crewai import Agent, LLM
 from tools.youtube_transcript_extraction import YoutubeTranscriptTool
+from tools.email_tool import SendEmailTool
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -28,6 +29,7 @@ class YT2WriteAgents():
         logger.info("Initializing TripAgents...")
         self.llm = LLM(model="gemini/gemini-2.0-flash")
         self.youtube_tool = YoutubeTranscriptTool()
+        self.email_tool = SendEmailTool()
         logger.info("TripAgents initialized successfully.")
 
     def transcript_agent(self):
@@ -77,6 +79,24 @@ class YT2WriteAgents():
                 "You are a skilled blog writer who specializes in converting outlines and transcripts into full-length, readable blog articles. "
                 "You maintain a conversational tone, ensure readability, and make the blog informative yet engaging."
             ),
+            llm=self.llm,
+            allow_delegation=False
+        )
+    
+    def email_agent(self):
+        """
+        Create an agent that sends blog posts via email.
+        """
+        logger.info("Creating Email Delivery Specialist agent.")
+        return Agent(
+            role="Email Delivery Specialist",
+            goal="Send the completed blog post to the specified recipient via email with proper formatting and subject line.",
+            backstory=(
+                "You are a professional email communication specialist. "
+                "Your role is to deliver completed blog posts to users via email with appropriate subject lines "
+                "and professional formatting. You ensure the content is properly presented and easy to read."
+            ),
+            tools=[self.email_tool],
             llm=self.llm,
             allow_delegation=False
         )

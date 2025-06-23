@@ -32,3 +32,23 @@ class YT2WriteTasks():
             expected_output="Complete blog article in markdown format with proper headings, engaging content, and SEO-friendly structure.",
             agent=agent
         )
+    
+    def send_blog_email(self, agent, recipient_email, video_title="YouTube Video"):
+        """Send blog post via email"""
+        return Task(
+            description=f"""
+            Send the completed blog post to {recipient_email} via email.
+            
+            Email Requirements:
+            - To: {recipient_email}
+            - Subject: "Your Blog Post: {video_title} - Generated from YouTube Video"
+            - Body: Include a professional greeting, mention that this blog was generated from a YouTube video, 
+                   include the full blog content with proper formatting, and add a professional closing.
+            
+            Use the Send Email tool to deliver this content.
+
+            IMPORTANT: After sending the email, return the original blog content that was sent, not just a confirmation message.
+            """,
+            expected_output=f"Confirmation that the blog post has been successfully sent via email to {recipient_email}",
+            agent=agent
+        )
