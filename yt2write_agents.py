@@ -27,7 +27,7 @@ class YT2WriteAgents():
         Initialize the TripAgents class with LLM and YoutubeTranscriptTool.
         """
         logger.info("Initializing TripAgents...")
-        self.llm = LLM(model="gemini/gemini-2.5-flash")
+        self.llm = LLM(model="gemini/gemini-2.0-flash")
         self.youtube_tool = YoutubeTranscriptTool()
         self.email_tool = SendEmailTool()
         logger.info("TripAgents initialized successfully.")
